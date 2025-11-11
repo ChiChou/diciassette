@@ -792,11 +792,11 @@ export class FridaTranspiler {
     }
 
     if (onMatchBody) {
-      let replacement = `${enumerationCall}.forEach(${onMatchBody})`;
+      let replacement = `${enumerationCall}.forEach(${onMatchBody});`;
 
       if (onCompleteBody && onCompleteBody.trim()) {
         // Add onComplete logic after the forEach
-        replacement = `${replacement};\n${onCompleteBody}`;
+        replacement = `${replacement}\n${onCompleteBody}`;
       }
 
       node.replaceWithText(replacement);
