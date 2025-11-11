@@ -9,7 +9,8 @@ This document details all the API transformations performed by Diciassette.
 3. [Module Initialization APIs](#module-initialization-apis)
 4. [Module Symbol APIs](#module-symbol-apis)
 5. [Memory Read/Write APIs](#memory-readwrite-apis)
-6. [Optimization Strategy](#optimization-strategy)
+6. [Bridge Imports](#bridge-imports)
+7. [Optimization Strategy](#optimization-strategy)
 
 ---
 
@@ -204,6 +205,85 @@ data
   .add(4).writeU16(37)
   .add(2).writeU16(42);
 ```
+
+---
+
+## Bridge Imports
+
+### Automatic ObjC and Java Import Detection
+
+In Frida 17, the `ObjC` and `Java` objects must be explicitly imported from their respective bridge modules. Diciassette automatically detects usage of these objects and adds the necessary imports at the top of the file.
+
+### ObjC Bridge Import
+
+**Before (Frida 16):**
+```typescript
+const NSString = ObjC.classes.NSString;
+const str = NSString.stringWithString_("Hello");
+```
+
+**After (Frida 17):**
+```typescript
+import ObjC from "frida-objc-bridge";
+
+const NSString = ObjC.classes.NSString;
+const str = NSString.stringWithString_("Hello");
+```
+
+### Java Bridge Import
+
+**Before (Frida 16):**
+```typescript
+Java.perform(() => {
+  const MainActivity = Java.use("com.example.MainActivity");
+  MainActivity.onCreate.implementation = function() {
+    console.log("onCreate called");
+  };
+});
+```
+
+**After (Frida 17):**
+```typescript
+import Java from "frida-java-bridge";
+
+Java.perform(() => {
+  const MainActivity = Java.use("com.example.MainActivity");
+  MainActivity.onCreate.implementation = function() {
+    console.log("onCreate called");
+  };
+});
+```
+
+### Combined Example
+
+**Before (Frida 16):**
+```typescript
+// No imports needed
+const activity = ObjC.classes.UIApplication.sharedApplication();
+
+Java.perform(() => {
+  const String = Java.use("java.lang.String");
+});
+```
+
+**After (Frida 17):**
+```typescript
+import Java from "frida-java-bridge";
+import ObjC from "frida-objc-bridge";
+
+const activity = ObjC.classes.UIApplication.sharedApplication();
+
+Java.perform(() => {
+  const String = Java.use("java.lang.String");
+});
+```
+
+### Import Placement
+
+- Imports are added at the very beginning of the file
+- If the file already has existing imports, the bridge imports are inserted after them
+- Duplicate imports are automatically avoided - if an import already exists, it won't be added again
+- Imports are only added if the respective object (`ObjC` or `Java`) is actually used in the code
 
 ---
 

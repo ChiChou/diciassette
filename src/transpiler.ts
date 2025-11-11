@@ -94,6 +94,9 @@ export class FridaTranspiler {
 
     // Transform legacy enumeration APIs with callbacks
     this.transformLegacyEnumerationAPIs(sourceFile);
+
+    // Add ObjC and Java imports if needed
+    this.addBridgeImports(sourceFile);
   }
 
   /**
@@ -797,6 +800,67 @@ export class FridaTranspiler {
       }
 
       node.replaceWithText(replacement);
+    }
+  }
+
+  /**
+   * Add ObjC and Java bridge imports if they are used in the file
+   */
+  private addBridgeImports(sourceFile: SourceFile): void {
+    let usesObjC = false;
+    let usesJava = false;
+
+    // Check if ObjC or Java are already imported
+    const existingImports = sourceFile.getImportDeclarations();
+    let hasObjCImport = false;
+    let hasJavaImport = false;
+
+    for (const importDecl of existingImports) {
+      const moduleSpecifier = importDecl.getModuleSpecifierValue();
+      if (moduleSpecifier === "frida-objc-bridge") {
+        hasObjCImport = true;
+      }
+      if (moduleSpecifier === "frida-java-bridge") {
+        hasJavaImport = true;
+      }
+    }
+
+    // Scan the file for ObjC and Java usage
+    sourceFile.forEachDescendant((node) => {
+      if (Node.isIdentifier(node)) {
+        const text = node.getText();
+        if (text === "ObjC") {
+          usesObjC = true;
+        }
+        if (text === "Java") {
+          usesJava = true;
+        }
+      }
+    });
+
+    // Add imports at the beginning if needed
+    const importsToAdd: string[] = [];
+
+    if (usesJava && !hasJavaImport) {
+      importsToAdd.push('import Java from "frida-java-bridge";');
+    }
+
+    if (usesObjC && !hasObjCImport) {
+      importsToAdd.push('import ObjC from "frida-objc-bridge";');
+    }
+
+    if (importsToAdd.length > 0) {
+      // Insert at the beginning of the file
+      const importText = importsToAdd.join("\n") + "\n\n";
+
+      // If there are existing imports, insert after them
+      if (existingImports.length > 0) {
+        const lastImport = existingImports[existingImports.length - 1];
+        lastImport.replaceWithText(lastImport.getText() + "\n" + importsToAdd.join("\n"));
+      } else {
+        // Insert at the very beginning
+        sourceFile.insertStatements(0, importsToAdd);
+      }
     }
   }
 }
