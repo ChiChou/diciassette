@@ -1,0 +1,26 @@
+{
+  "name": "@diciassette/cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Upgrade your frida@16 projects to frida@17",
+  "type": "module",
+  "scripts": {
+    "build": "bun build --compile src/index.ts --outfile dist/diciassette",
+    "dev": "bun run src/index.ts",
+    "start": "./dist/diciassette"
+  },
+  "keywords": [
+    "cli",
+    "typescript",
+    "bun"
+  ],
+  "author": "AI",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "ts-morph": "^27.0.2"
+  }
+}
