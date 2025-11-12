@@ -2,6 +2,8 @@
 
 ![AI Slop: YES](badge.svg)
 
+[中文文档](README.cn.md)
+
 **Disclaimer: This whole experimental project is AI generated. I do not take any responsibility for data lose or bug generated**
 
 Upgrade your Frida 16 projects to Frida 17 by transforming obsolete API calls.
