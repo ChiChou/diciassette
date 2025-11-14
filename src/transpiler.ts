@@ -252,7 +252,7 @@ export class FridaTranspiler {
     }
 
     // Create the variable declaration
-    const varDeclaration = `const ${varName} = Process.getModuleByName(${this.quoteString(usage.moduleName)});`;
+    const varDeclaration = `const ${varName} = Process.getModuleByName(${JSON.stringify(usage.moduleName)});`;
 
     // Insert the variable declaration
     if (Node.isSourceFile(statementParent)) {
@@ -368,17 +368,6 @@ export class FridaTranspiler {
   }
 
   /**
-   * Quote a string with the appropriate quote style
-   */
-  private quoteString(str: string): string {
-    // Use single quotes by default, escape single quotes in the string
-    if (str.includes("'") && !str.includes('"')) {
-      return `"${str}"`;
-    }
-    return `'${str.replace(/'/g, "\\'")}'`;
-  }
-
-  /**
    * Get the transformed text of a source file
    */
   getTransformedText(sourceFile: SourceFile): string {
@@ -396,7 +385,7 @@ export class FridaTranspiler {
    * Transform Memory.read* and Memory.write* to ptr.read* and ptr.write*
    */
   private transformMemoryAPIs(sourceFile: SourceFile): void {
-    const memoryMethods = [
+    const memoryMethods = new Set([
       "readU8",
       "readU16",
       "readU32",
@@ -428,7 +417,7 @@ export class FridaTranspiler {
       "writeUtf8String",
       "writeUtf16String",
       "writeAnsiString",
-    ];
+    ]);
 
     sourceFile.forEachDescendant((node) => {
       if (Node.isCallExpression(node)) {
@@ -441,24 +430,22 @@ export class FridaTranspiler {
           if (
             Node.isIdentifier(object) &&
             object.getText() === "Memory" &&
-            memoryMethods.includes(property)
+            memoryMethods.has(property)
           ) {
             const args = node.getArguments();
-            if (args.length > 0) {
-              const ptrArg = args[0];
-              const restArgs = args
-                .slice(1)
-                .map((a) => a.getText())
-                .join(", ");
+            if (!args.length) return;
 
-              // Transform Memory.readU32(ptr) → ptr.readU32()
-              // Transform Memory.writeU32(ptr, value) → ptr.writeU32(value)
-              const newCall = restArgs
-                ? `${ptrArg.getText()}.${property}(${restArgs})`
-                : `${ptrArg.getText()}.${property}()`;
+            const ptrArg = args[0];
+            const restArgs = args
+              .slice(1)
+              .map((a) => a.getText())
+              .join(", ");
 
-              node.replaceWithText(newCall);
-            }
+            // Transform Memory.readU32(ptr) → ptr.readU32()
+            // Transform Memory.writeU32(ptr, value) → ptr.writeU32(value)
+            node.replaceWithText(
+              `${ptrArg.getText()}.${property}(${restArgs})`,
+            );
           }
         }
       }
@@ -511,13 +498,7 @@ export class FridaTranspiler {
 
     // Transform calls
     for (const { call, moduleName } of calls) {
-      const moduleNameQuoted =
-        moduleName.startsWith("'") ||
-        moduleName.startsWith('"') ||
-        moduleName.startsWith("`")
-          ? moduleName
-          : this.quoteString(moduleName);
-
+      const moduleNameQuoted = JSON.stringify(moduleName);
       call.replaceWithText(`Process.getModuleByName(${moduleNameQuoted}).base`);
     }
   }
@@ -542,21 +523,8 @@ export class FridaTranspiler {
             const args = node.getArguments();
             if (args.length === 1) {
               const moduleArg = args[0];
-              let moduleName: string;
-
-              if (
-                Node.isStringLiteral(moduleArg) ||
-                Node.isNoSubstitutionTemplateLiteral(moduleArg)
-              ) {
-                moduleName = this.quoteString(
-                  moduleArg.getLiteralValue() as string,
-                );
-              } else {
-                moduleName = moduleArg.getText();
-              }
-
               node.replaceWithText(
-                `Process.getModuleByName(${moduleName}).ensureInitialized()`,
+                `Process.getModuleByName(${moduleArg.getText()}).ensureInitialized()`,
               );
             }
           }
@@ -618,13 +586,7 @@ export class FridaTranspiler {
 
     // Transform calls
     for (const { call, moduleName, symbolName, method } of calls) {
-      const moduleNameQuoted =
-        moduleName.startsWith("'") ||
-        moduleName.startsWith('"') ||
-        moduleName.startsWith("`")
-          ? moduleName
-          : this.quoteString(moduleName);
-
+      const moduleNameQuoted = JSON.stringify(moduleName);
       call.replaceWithText(
         `Process.getModuleByName(${moduleNameQuoted}).${method}(${symbolName})`,
       );
@@ -826,14 +788,16 @@ export class FridaTranspiler {
     }
 
     // Scan the file for ObjC and Java usage
-    sourceFile.forEachDescendant((node) => {
+    sourceFile.forEachDescendant((node, traversal) => {
       if (Node.isIdentifier(node)) {
         const text = node.getText();
         if (text === "ObjC") {
           usesObjC = true;
+          traversal.stop();
         }
         if (text === "Java") {
           usesJava = true;
+          traversal.stop();
         }
       }
     });
@@ -856,7 +820,9 @@ export class FridaTranspiler {
       // If there are existing imports, insert after them
       if (existingImports.length > 0) {
         const lastImport = existingImports[existingImports.length - 1];
-        lastImport.replaceWithText(lastImport.getText() + "\n" + importsToAdd.join("\n"));
+        lastImport.replaceWithText(
+          lastImport.getText() + "\n" + importsToAdd.join("\n"),
+        );
       } else {
         // Insert at the very beginning
         sourceFile.insertStatements(0, importsToAdd);
