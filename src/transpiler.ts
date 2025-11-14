@@ -788,16 +788,14 @@ export class FridaTranspiler {
     }
 
     // Scan the file for ObjC and Java usage
-    sourceFile.forEachDescendant((node, traversal) => {
+    sourceFile.forEachDescendant((node) => {
       if (Node.isIdentifier(node)) {
         const text = node.getText();
         if (text === "ObjC") {
           usesObjC = true;
-          traversal.stop();
         }
         if (text === "Java") {
           usesJava = true;
-          traversal.stop();
         }
       }
     });
