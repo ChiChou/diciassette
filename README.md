@@ -87,7 +87,7 @@ Interceptor.attach(openPtr, {
 
 ### Download Pre-built Binaries
 
-Pre-built binaries for macOS (x64/ARM64), Linux (x64), and Windows (x64) are available on the [GitHub Releases page](https://github.com/frida/diciassette/releases).
+Pre-built binaries for macOS (x64/ARM64), Linux (x64), and Windows (x64) are available on the [GitHub Releases page](https://github.com/chichou/diciassette/releases).
 
 Simply download the appropriate binary for your platform and run it directly.
 

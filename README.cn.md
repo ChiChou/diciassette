@@ -85,7 +85,7 @@ Interceptor.attach(openPtr, {
 
 ### 下载预编译二进制文件
 
-可在 [GitHub Releases 页面](https://github.com/frida/diciassette/releases) 获取适用于 macOS (x64/ARM64)、Linux (x64) 和 Windows (x64) 的预编译二进制文件。
+可在 [GitHub Releases 页面](https://github.com/chichou/diciassette/releases) 获取适用于 macOS (x64/ARM64)、Linux (x64) 和 Windows (x64) 的预编译二进制文件。
 
 只需下载适合您平台的二进制文件并直接运行即可。
 
