@@ -4,6 +4,7 @@ import {
   Node,
   SyntaxKind,
   CallExpression,
+  Statement,
   // Notes from human. The following 2 lines are not AI generated!
   // do not handle scope issues for now, just blindly add suffixes
   // VariableDeclarationKind,
@@ -214,75 +215,104 @@ export class FridaTranspiler {
   ): void {
     if (usage.calls.length === 0) return;
 
-    // Find the optimal insertion point (before the first usage)
-    const firstCall = usage.calls[0];
-    const insertionPoint = this.findInsertionPoint(firstCall);
+    // For literal module names, create a variable and reuse it
+    if (usage.isLiteral) {
+      // Find the optimal insertion point (before the first usage)
+      const firstCall = usage.calls[0];
+      const insertionPoint = this.findInsertionPoint(firstCall);
 
-    if (!insertionPoint) return;
+      if (!insertionPoint) return;
 
-    // Generate a unique variable name
-    const varName = this.generateVariableName(sourceFile, usage.moduleName);
+      // Generate a unique variable name
+      const varName = this.generateVariableName(sourceFile, usage.moduleName);
 
-    // Insert the variable declaration
-    // The insertionPoint should be a statement itself
-    const statement = insertionPoint;
-    let statementParent = statement.getParent();
+      // Insert the variable declaration
+      // The insertionPoint should be a statement itself
+      const statement = insertionPoint;
+      let statementParent = statement.getParent();
 
-    // If the parent is null, the statement is likely at the top level of the source file
-    if (!statementParent || Node.isSourceFile(statementParent)) {
-      statementParent = sourceFile;
-    }
+      // If the parent is null, the statement is likely at the top level of the source file
+      if (!statementParent || Node.isSourceFile(statementParent)) {
+        statementParent = sourceFile;
+      }
 
-    if (!statementParent) return;
+      if (!statementParent) return;
 
-    // Find the index to insert before
-    let insertIndex = 0;
-    if (Node.isSourceFile(statementParent)) {
-      insertIndex = statementParent.getStatements().indexOf(statement as any);
-    } else if (Node.isBlock(statementParent)) {
-      insertIndex = statementParent.getStatements().indexOf(statement as any);
-    } else if (
-      Node.isCaseClause(statementParent) ||
-      Node.isDefaultClause(statementParent)
-    ) {
-      insertIndex = statementParent.getStatements().indexOf(statement as any);
+      // Find the index to insert before
+      let insertIndex = 0;
+      if (Node.isSourceFile(statementParent)) {
+        insertIndex = statementParent
+          .getStatements()
+          .indexOf(statement as Statement);
+      } else if (Node.isBlock(statementParent)) {
+        insertIndex = statementParent
+          .getStatements()
+          .indexOf(statement as Statement);
+      } else if (
+        Node.isCaseClause(statementParent) ||
+        Node.isDefaultClause(statementParent)
+      ) {
+        insertIndex = statementParent
+          .getStatements()
+          .indexOf(statement as Statement);
+      } else {
+        // For other cases, try to insert at the beginning
+        insertIndex = 0;
+      }
+
+      // Create the variable declaration
+      const varDeclaration = `const ${varName} = Process.getModuleByName(${JSON.stringify(usage.moduleName)});`;
+
+      // Insert the variable declaration
+      if (Node.isSourceFile(statementParent)) {
+        statementParent.insertStatements(insertIndex, varDeclaration);
+      } else if (Node.isBlock(statementParent)) {
+        statementParent.insertStatements(insertIndex, varDeclaration);
+      } else if (
+        Node.isCaseClause(statementParent) ||
+        Node.isDefaultClause(statementParent)
+      ) {
+        statementParent.insertStatements(insertIndex, varDeclaration);
+      } else {
+        // Fallback: try to insert before the statement
+        statement.replaceWithText(`${varDeclaration}\n${statement.getText()}`);
+      }
+
+      // Replace all calls with the new syntax
+      for (const call of usage.calls) {
+        const expression = call.getExpression();
+        if (Node.isPropertyAccessExpression(expression)) {
+          const methodName = expression.getName();
+          const args = call.getArguments();
+
+          if (args.length === 2) {
+            const exportArg = args[1];
+
+            // Replace with varName.getExportByName(exportArg)
+            call.replaceWithText(
+              `${varName}.${methodName}(${exportArg.getText()})`,
+            );
+          }
+        }
+      }
     } else {
-      // For other cases, try to insert at the beginning
-      insertIndex = 0;
-    }
+      // For dynamic module names, inline the transformation without creating a variable
+      for (const call of usage.calls) {
+        const expression = call.getExpression();
+        if (Node.isPropertyAccessExpression(expression)) {
+          const methodName = expression.getName();
+          const args = call.getArguments();
 
-    // Create the variable declaration
-    const varDeclaration = `const ${varName} = Process.getModuleByName(${JSON.stringify(usage.moduleName)});`;
+          if (args.length === 2) {
+            const moduleArg = args[0];
+            const exportArg = args[1];
 
-    // Insert the variable declaration
-    if (Node.isSourceFile(statementParent)) {
-      statementParent.insertStatements(insertIndex, varDeclaration);
-    } else if (Node.isBlock(statementParent)) {
-      statementParent.insertStatements(insertIndex, varDeclaration);
-    } else if (
-      Node.isCaseClause(statementParent) ||
-      Node.isDefaultClause(statementParent)
-    ) {
-      statementParent.insertStatements(insertIndex, varDeclaration);
-    } else {
-      // Fallback: try to insert before the statement
-      statement.replaceWithText(`${varDeclaration}\n${statement.getText()}`);
-    }
-
-    // Replace all calls with the new syntax
-    for (const call of usage.calls) {
-      const expression = call.getExpression();
-      if (Node.isPropertyAccessExpression(expression)) {
-        const methodName = expression.getName();
-        const args = call.getArguments();
-
-        if (args.length === 2) {
-          const exportArg = args[1];
-
-          // Replace with varName.getExportByName(exportArg)
-          call.replaceWithText(
-            `${varName}.${methodName}(${exportArg.getText()})`,
-          );
+            // Transform Module.getExportByName(dynamicExpr, "export")
+            // to Process.getModuleByName(dynamicExpr).getExportByName("export")
+            call.replaceWithText(
+              `Process.getModuleByName(${moduleArg.getText()}).${methodName}(${exportArg.getText()})`,
+            );
+          }
         }
       }
     }
@@ -458,7 +488,7 @@ export class FridaTranspiler {
   private transformModuleBaseAddress(sourceFile: SourceFile): void {
     const calls: Array<{
       call: CallExpression;
-      moduleName: string;
+      moduleArg: Node;
       method: string;
     }> = [];
 
@@ -478,18 +508,7 @@ export class FridaTranspiler {
             const args = node.getArguments();
             if (args.length === 1) {
               const moduleArg = args[0];
-              let moduleName: string;
-
-              if (
-                Node.isStringLiteral(moduleArg) ||
-                Node.isNoSubstitutionTemplateLiteral(moduleArg)
-              ) {
-                moduleName = moduleArg.getLiteralValue() as string;
-              } else {
-                moduleName = moduleArg.getText();
-              }
-
-              calls.push({ call: node, moduleName, method: property });
+              calls.push({ call: node, moduleArg, method: property });
             }
           }
         }
@@ -497,9 +516,11 @@ export class FridaTranspiler {
     });
 
     // Transform calls
-    for (const { call, moduleName } of calls) {
-      const moduleNameQuoted = JSON.stringify(moduleName);
-      call.replaceWithText(`Process.getModuleByName(${moduleNameQuoted}).base`);
+    for (const { call, moduleArg } of calls) {
+      // Use the module argument as-is, whether it's a string literal or dynamic expression
+      call.replaceWithText(
+        `Process.getModuleByName(${moduleArg.getText()}).base`,
+      );
     }
   }
 
@@ -539,8 +560,8 @@ export class FridaTranspiler {
   private transformModuleSymbolAPIs(sourceFile: SourceFile): void {
     const calls: Array<{
       call: CallExpression;
-      moduleName: string;
-      symbolName: string;
+      moduleArg: Node;
+      symbolArg: Node;
       method: string;
     }> = [];
 
@@ -562,20 +583,10 @@ export class FridaTranspiler {
               const moduleArg = args[0];
               const symbolArg = args[1];
 
-              let moduleName: string;
-              if (
-                Node.isStringLiteral(moduleArg) ||
-                Node.isNoSubstitutionTemplateLiteral(moduleArg)
-              ) {
-                moduleName = moduleArg.getLiteralValue() as string;
-              } else {
-                moduleName = moduleArg.getText();
-              }
-
               calls.push({
                 call: node,
-                moduleName,
-                symbolName: symbolArg.getText(),
+                moduleArg,
+                symbolArg,
                 method: property,
               });
             }
@@ -585,10 +596,10 @@ export class FridaTranspiler {
     });
 
     // Transform calls
-    for (const { call, moduleName, symbolName, method } of calls) {
-      const moduleNameQuoted = JSON.stringify(moduleName);
+    for (const { call, moduleArg, symbolArg, method } of calls) {
+      // Use the module and symbol arguments as-is, whether they're literals or dynamic expressions
       call.replaceWithText(
-        `Process.getModuleByName(${moduleNameQuoted}).${method}(${symbolName})`,
+        `Process.getModuleByName(${moduleArg.getText()}).${method}(${symbolArg.getText()})`,
       );
     }
   }
